@@ -22,7 +22,9 @@ class EventScreenShot:
 
         while True:
 
-            self._take_screenshot_30_seconds()
+            full_path, active_path = self._take_screenshot_30_seconds()
+
+            self._ocr_extraction(full_path, active_path)
 
             next_capture += INTERVAL
 
@@ -76,3 +78,24 @@ class EventScreenShot:
             active_path = None
 
         return full_path, active_path
+
+    def _ocr_extraction(self, full_path: str, active_path: str):
+ 
+        """map new event that duration >= 30 sec for doing ocr extraction"""
+
+        # send active path and screenshot time to API
+
+        logger.debug('doning _ocr_extraction')
+
+ 
+        screenshot_time = get_image_name_to_utc(full_path) #get screenshot time
+    
+        payload = {
+            "screenshot_path": active_path, #for doing ocr
+            "screenshot_time": screenshot_time, #for findding interval event [second events must <= that time]
+        }
+ 
+        logger.debug(f'_ocr_extraction: payload. {payload}')
+        response = requests.post(self.server_url + "/ocr_extraction", json=payload, )
+        logger.debug(f'_ocr_extraction: response. {response}')
+        response.raise_for_status()
