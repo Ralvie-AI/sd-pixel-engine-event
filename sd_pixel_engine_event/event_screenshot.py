@@ -4,15 +4,16 @@ import time
 
 from datetime import datetime, timezone
 
-from sd_pixel_engine_event.const import EVENT_SCREENSHOT_FOLDER_USER
-from sd_pixel_engine_event.capture_window import capture_screenshots
+from sd_pixel_engine_event.const import EVENT_SCREENSHOT_FOLDER_USER, INTERVAL
+from sd_pixel_engine_event.utils import get_image_name_to_utc, capture_active_window_screenshot, capture_fullscreen
+import requests
 
 logger = logging.getLogger(__name__)
 
-SCREENSHOT_INTERVAL = 30
 
 class EventScreenShot:
-    def __init__(self, user_id, is_ocr_text_enabled=True):
+    def __init__(self, server_url, user_id, is_ocr_text_enabled=True):
+        self.server_url = server_url if server_url else "http://localhost:7600/screenshot/"
         self.user_id = user_id
         self.is_ocr_text_enabled = is_ocr_text_enabled
 
@@ -20,9 +21,10 @@ class EventScreenShot:
         next_capture = time.monotonic()
 
         while True:
+
             self._take_screenshot_30_seconds()
 
-            next_capture += SCREENSHOT_INTERVAL
+            next_capture += INTERVAL
 
             sleep_time = next_capture - time.monotonic()
 
@@ -32,32 +34,45 @@ class EventScreenShot:
                 # Screenshot processing took longer than the interval.
                 next_capture = time.monotonic()
 
-    # 2026-01-13 06:58:16.823000+00:00 UTC Time 
-    # # 2026-01-13T06-58-16.823000Z.png
     def _take_screenshot_30_seconds(self, screenshot_folder=None):
         if screenshot_folder is None:
-            screenshot_folder = EVENT_SCREENSHOT_FOLDER_USER.format(
-                user_id=self.user_id
-            )
-
+            screenshot_folder = EVENT_SCREENSHOT_FOLDER_USER.format(user_id=self.user_id)
         os.makedirs(screenshot_folder, exist_ok=True)
 
+        utc_now = datetime.now(timezone.utc)
+        timestamp = utc_now.strftime("%Y-%m-%dT%H-%M-%S.%fZ")
+
+        full_path = f"{screenshot_folder}/{self.user_id}_{timestamp}.png"
+        active_path = f"{screenshot_folder}/{self.user_id}_{timestamp}_active.png"
+
+        # 1. ลองแคปหน้าจอหลัก (Fullscreen)
         try:
-            utc_now = datetime.now(timezone.utc)
-            timestamp = utc_now.strftime("%Y-%m-%dT%H-%M-%S.%fZ")
-
-            output_file = os.path.join(
-                screenshot_folder,
-                f"{self.user_id}_{timestamp}.png"
+            capture_fullscreen(full_path)
+        except Exception as e:
+            logger.warning(
+                f"Mac Screen Locked / Sleep - Fullscreen capture skipped: {e}"
             )
+            # เคลียร์ไฟล์ขยะขนาด 0 byte (ถ้ามี)
+            if os.path.exists(full_path):
+                try:
+                    os.remove(full_path)
+                except OSError:
+                    pass
+            full_path = None
 
-            output_file_ocr = os.path.join(
-                screenshot_folder,
-                f"{self.user_id}_{timestamp}_ocr.png"
+        # 2. ลองแคปหน้าต่างที่ใช้งานอยู่ (Active Window)
+        try:
+            capture_active_window_screenshot(active_path)
+        except Exception as e:
+            logger.warning(
+                f"Mac Screen Locked / Sleep - Active window capture skipped: {e}"
             )
+            # เคลียร์ไฟล์ขยะขนาด 0 byte (ถ้ามี)
+            if os.path.exists(active_path):
+                try:
+                    os.remove(active_path)
+                except OSError:
+                    pass
+            active_path = None
 
-            capture_screenshots(output_file, output_file_ocr)
-
-        except Exception:
-            logger.exception("MSS screenshot capture failed") 
-        
+        return full_path, active_path

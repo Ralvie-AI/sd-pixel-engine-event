@@ -1,103 +1,90 @@
-
-import threading
-import logging
 import time
+import logging
+import subprocess
+import os
+import sys
+import Quartz
 from datetime import datetime
-
-import win32gui
-import win32con
-
-from sd_pixel_engine_event.utils import stop_process_by_exe
-
-# Global variable to store time just before sleep
-sleep_lock = threading.Lock()
-last_sleep_time = None          # datetime when we received PBT_APMSUSPEND
-# SLEEP_THRESHOLD = 48 * 3600     # 48 hours in seconds
-# SLEEP_THRESHOLD = 24 * 3600     # 48 hours in seconds
-SLEEP_THRESHOLD = 1800     # 30 minutes
-# SLEEP_THRESHOLD = 900     # 15  minutes
+from sd_pixel_engine_event.const import SLEEP_THRESHOLD, LOCKSCREEN_THRESHOLD, CHECK_INTERVAL
+import signal
 
 logger = logging.getLogger(__name__)
 
+# SLEEP_THRESHOLD = timedelta(minutes=45) # for system sleep
+# LOCKSCREEN_THRESHOLD = timedelta(hours=1) # for lockscreen
+# CHECK_INTERVAL = 5  # seconds
 
-def is_long_sleep() -> bool:
-    """
-    Call this function whenever you want to check:
-    Returns True if last wake-up was after ≥ 48 hours sleep
-    Returns False otherwise (short sleep / no sleep info)
-    """
-    global last_sleep_time
-    if last_sleep_time is None:
-        return False
+last_tick_time = None
+already_killed = False
+lock_start_time = None
 
-    now = datetime.now()
-    slept_seconds = (now - last_sleep_time).total_seconds()
-
-    # Optional: reset after check so repeated calls return False until next sleep
-    # last_sleep_time = None
-
-    return slept_seconds >= SLEEP_THRESHOLD
-
-
-def on_long_sleep_detected():    
-    slept_hours = (datetime.now() - last_sleep_time).total_seconds() / 3600
-    logger.info(f"Long sleep detected! ({slept_hours:.1f} hours)")
+def is_screen_locked() -> bool:
+    """check is macOS screen Locking """
     try:
-        stop_process_by_exe("sd-pixel-engine.exe")
+        session_info = Quartz.CGSessionCopyCurrentDictionary()
+        if session_info:
+            # if CGSSessionScreenIsLocked is True = lockscreen
+            return session_info.get("CGSSessionScreenIsLocked", False)
     except Exception as e:
-        logger.error(f"Failed to stop process: {e}")
+        logger.debug(f"Failed to check screen lock status: {e}")
+    return False
 
 
-def wnd_proc(hwnd, msg, wparam, lparam):
-    global last_sleep_time
+def on_long_sleep_detected(reason: str):
+    global already_killed
+    
+    if already_killed:
+        return
+        
+    already_killed = True
+    logger.warning(f"Kill trigger activated reason: [{reason}]. Terminating process...")
 
-    if msg == win32con.WM_POWERBROADCAST:
-
-        if wparam == win32con.PBT_APMSUSPEND:
-            with sleep_lock:
-                last_sleep_time = datetime.now()          # ← key moment
-                logger.info(f"System is going to sleep => {last_sleep_time}")
-            
-
-        elif wparam == win32con.PBT_APMRESUMEAUTOMATIC:
-            logger.info(f"Automatic resume => {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
-        elif wparam == win32con.PBT_APMRESUMESUSPEND:
-            logger.info(f"Resume + user present => {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-            if is_long_sleep():
-                on_long_sleep_detected()
-
-    return 0
-
-
-def create_hidden_power_listener():
-    wc = win32gui.WNDCLASS()
-    wc.lpfnWndProc = wnd_proc
-    wc.lpszClassName = "LongSleepDetector"
-    win32gui.RegisterClass(wc)
-
-    hwnd = win32gui.CreateWindow(
-        wc.lpszClassName, "Long Sleep Detector",
-        0, 0, 0, 0, 0, 0, 0, 0, None
-    )
-
-    win32gui.PumpMessages()  # runs forever
-
-
-if __name__ == "__main__":
-    print("Long sleep (≥48h) detector running... (Ctrl+C to stop)")
-
-    t = threading.Thread(target=create_hidden_power_listener, daemon=True)
-    t.start()
-
-    # Example: you can call is_long_sleep() from anywhere / every minute
     try:
-        while True:
-            time.sleep(60)
-            if is_long_sleep():
-                print("→ Called from timer: long sleep detected")
-            else:
-                print("→ Called from timer: short or no sleep")
+        from sd_main.sd_desktop.monitor import stop_process, get_running_process_id
+        
+        pid = get_running_process_id("sd-pixel-engine")
+        if pid:
+            stop_process(pid)
+        else:
+            logger.warning("PID not found via monitor, killing self process...")
+            os.kill(os.getpid(), signal.SIGTERM)
+            
+    except Exception:
+        logger.exception("Failed to stop process safely, forcing exit...")
+        os._exit(1)
 
-    except KeyboardInterrupt:
-        print("\nStopped.")
+
+def sleep_wake_monitor_loop():
+    global last_tick_time, lock_start_time
+
+    logger.info("Starting macOS sleep & lock-screen detector loop")
+    last_tick_time = datetime.now()
+
+    while True:
+        time.sleep(CHECK_INTERVAL)
+
+        now = datetime.now()
+        gap = now - last_tick_time
+
+        # Case 1 : System Sleep more than 45 minutes
+        if gap >= SLEEP_THRESHOLD:
+            on_long_sleep_detected(f"System sleep gap detected ({gap.total_seconds():.1f}s)")
+            break
+
+        # Case 2 : Lock Screen
+        if is_screen_locked():
+            if lock_start_time is None:
+                lock_start_time = now  
+                logger.debug("Screen locked detected. Start counting lock duration...")
+            else:
+                locked_duration = now - lock_start_time
+                # if lockscreen more than 1 hour
+                if locked_duration >= LOCKSCREEN_THRESHOLD:
+                    on_long_sleep_detected(f"Lock screen duration exceeded ({locked_duration.total_seconds():.1f}s)")
+                    break
+        else:
+            if lock_start_time is not None:
+                logger.info("Screen unlocked. Resetting lock timer.")
+                lock_start_time = None
+
+        last_tick_time = now
