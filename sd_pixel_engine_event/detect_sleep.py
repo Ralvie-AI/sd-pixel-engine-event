@@ -43,7 +43,7 @@ def on_long_sleep_detected():
     slept_hours = (datetime.now() - last_sleep_time).total_seconds() / 3600
     logger.info(f"Long sleep detected! ({slept_hours:.1f} hours)")
     try:
-        stop_process_by_exe("sd-pixel-engine.exe")
+        stop_process_by_exe("sd-pixel-engine-event.exe")
     except Exception as e:
         logger.error(f"Failed to stop process: {e}")
 
