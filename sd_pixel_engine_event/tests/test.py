@@ -4,12 +4,12 @@ import sys
 import time
 import logging 
 
-
+EXE_NAME = 'sd-pixel-engine-event'
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 EXE_PATH = os.path.join(
                     os.path.expanduser("~"),
-                    "Desktop", "activitywatch", "sd-pixel-engine-event", "dist", 'sd-pixel-engine-event', 'sd-pixel-engine-event')
+                    "Desktop", "activitywatch", EXE_NAME, "dist", EXE_NAME, EXE_NAME)
 
 def start_sd_pixel_engine_event_mac(command_list):
     try:
@@ -58,7 +58,6 @@ if __name__ == "__main__":
 
     command_list = [
         screenshot_exe_file,
-        "--server_url", "",
         "--user_id", str(user_id),
         "--is_ocr_text_enabled", str("true"),
     ]
