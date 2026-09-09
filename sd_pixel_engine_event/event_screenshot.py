@@ -20,6 +20,9 @@ class EventScreenShot:
         next_capture = time.monotonic()
 
         while True:
+
+            logger.info(f"next capture time => {next_capture}")
+
             self._take_screenshot_30_seconds()
 
             next_capture += SCREENSHOT_INTERVAL
