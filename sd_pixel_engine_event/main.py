@@ -1,12 +1,9 @@
-import os 
 import argparse
-import shutil
 import logging 
 import threading
 
 from sd_pixel_engine_event.log import setup_logging
 from sd_pixel_engine_event.event_screenshot import EventScreenShot
-from sd_pixel_engine_event.const import EVENT_SCREENSHOT_FOLDER_USER
 from sd_pixel_engine_event.utils import str2bool
 from sd_pixel_engine_event.detect_sleep import create_hidden_power_listener
 
@@ -20,13 +17,6 @@ def setup_argument_parser():
                         default=False, help="Extract ocr text from screenshots (true/false, default=True)")
     return parser
 
-
-def cleanup_screenshot_folder(user_id):
-    """Clean up existing screenshot folder."""
-    screenshot_folder = EVENT_SCREENSHOT_FOLDER_USER.format(user_id=user_id)
-    if os.path.exists(screenshot_folder):
-        logger.info(f"Deleting screenshot folder => {screenshot_folder}")
-        shutil.rmtree(screenshot_folder)
 
 def start_sleep_detection():
     """Start the sleep detection daemon thread."""
@@ -42,9 +32,6 @@ def main():
 
     # Set up logging
     setup_logging("sd-pixel-engine-event", log_file=True)
-
-    # Cleanup and initialize
-    cleanup_screenshot_folder(args.user_id)
 
     screenshot = EventScreenShot(
         user_id=args.user_id,  
