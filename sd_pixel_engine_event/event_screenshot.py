@@ -4,7 +4,7 @@ import time
 
 from datetime import datetime, timezone
 
-from sd_pixel_engine_event.const import EVENT_SCREENSHOT_FOLDER_USER
+from sd_pixel_engine_event.const import EVENT_SCREENSHOT_FOLDER_USER_COMPANY
 from sd_pixel_engine_event.capture_window import capture_screenshots
 
 logger = logging.getLogger(__name__)
@@ -12,8 +12,9 @@ logger = logging.getLogger(__name__)
 SCREENSHOT_INTERVAL = 30
 
 class EventScreenShot:
-    def __init__(self, user_id, is_ocr_text_enabled=True):
+    def __init__(self, user_id, company_id, is_ocr_text_enabled=True):
         self.user_id = user_id
+        self.company_id = company_id
         self.is_ocr_text_enabled = is_ocr_text_enabled
 
     def run(self):
@@ -39,8 +40,8 @@ class EventScreenShot:
     # # 2026-01-13T06-58-16.823000Z.png
     def _take_screenshot_30_seconds(self, screenshot_folder=None):
         if screenshot_folder is None:
-            screenshot_folder = EVENT_SCREENSHOT_FOLDER_USER.format(
-                user_id=self.user_id
+            screenshot_folder = EVENT_SCREENSHOT_FOLDER_USER_COMPANY.format(
+                user_id=self.user_id, company_id=self.company_id
             )
 
         os.makedirs(screenshot_folder, exist_ok=True)
@@ -51,12 +52,12 @@ class EventScreenShot:
 
             output_file = os.path.join(
                 screenshot_folder,
-                f"{self.user_id}_{timestamp}.png"
+                f"{self.user_id}_{self.company_id}_{timestamp}.png"
             )
 
             output_file_ocr = os.path.join(
                 screenshot_folder,
-                f"{self.user_id}_{timestamp}_ocr.png"
+                f"{self.user_id}_{self.company_id}_{timestamp}_ocr.png"
             )
 
             capture_screenshots(output_file, output_file_ocr)

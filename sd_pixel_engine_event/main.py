@@ -12,7 +12,8 @@ logger = logging.getLogger(__name__)
 def setup_argument_parser():
     """Create and return the argument parser."""
     parser = argparse.ArgumentParser(description="Event Screenshot")
-    parser.add_argument("--user_id", required=True, help="User ID for identification")    
+    parser.add_argument("--user_id", required=True, help="User ID for identification")
+    parser.add_argument("--company_id", required=True, help="User's Company ID")
     parser.add_argument("--is_ocr_text_enabled", type=str2bool, nargs="?", const=True, 
                         default=False, help="Extract ocr text from screenshots (true/false, default=True)")
     return parser
@@ -34,7 +35,8 @@ def main():
     setup_logging("sd-pixel-engine-event", log_file=True)
 
     screenshot = EventScreenShot(
-        user_id=args.user_id,  
+        user_id=args.user_id,
+        company_id=args.company_id,
         is_ocr_text_enabled=args.is_ocr_text_enabled,
     )
 
